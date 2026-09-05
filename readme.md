@@ -6,52 +6,61 @@
 
 ## 🚀 Features Implemented
 
-* **Type-Safe Validation:** Zod schemas for strict request body and environment variable parsing.
-* **Dual-Token System:** Short-lived Access Tokens (30m) paired with long-lived Refresh Tokens (7d) stored securely in `httpOnly` cookies.
-* **Global Session Revocation:** Integrated `tokenVersion` check in Mongoose models to kill compromised user sessions instantly.
-* **Secure Email Verification:** Async verification pipeline powered by Nodemailer, Mailtrap, and signed verification tokens.
-* **Password Hashing:** Secure password storage using `bcryptjs` with optimized salt rounds.
+- **Type-Safe Validation:** Zod schemas for strict request body and environment variable parsing.
+- **Dual-Token System:** Short-lived Access Tokens (30m) paired with long-lived Refresh Tokens (7d) stored securely in `httpOnly` cookies.
+- **Global Session Revocation:** Integrated `tokenVersion` check in Mongoose models to kill compromised user sessions instantly.
+- **Secure Email Verification:** Async verification pipeline powered by Nodemailer, Mailtrap, and signed verification tokens.
+- **Password Hashing:** Secure password storage using `bcryptjs` with optimized salt rounds.
 
 ---
 
 ## 🛠️ Tech Stack
 
-| Category | Technology |
-| :--- | :--- |
-| **Runtime & Language** | Node.js, TypeScript |
-| **Framework** | Express.js |
-| **Database & ODM** | MongoDB, Mongoose |
-| **Authentication** | JSON Web Tokens (`jsonwebtoken`) |
-| **Validation & Security** | Zod, Bcrypt.js |
-| **Email Services** | Nodemailer, Mailtrap |
+| Category                  | Technology                       |
+| :------------------------ | :------------------------------- |
+| **Runtime & Language**    | Node.js, TypeScript              |
+| **Framework**             | Express.js                       |
+| **Database & ODM**        | MongoDB, Mongoose                |
+| **Authentication**        | JSON Web Tokens (`jsonwebtoken`) |
+| **Validation & Security** | Zod, Bcrypt.js                   |
+| **Email Services**        | Nodemailer + Mailtrap (Testing)  |
+
+> **Note:** Mailtrap is currently used for local email testing and inbox simulation. It will be swapped for Resend in production.
 
 ---
 
 ## ⚡ Getting Started
 
 ### 1. Prerequisites
-* Node.js (v18+)
-* MongoDB connection string (Local or Atlas)
+
+- Node.js (v18+)
+- MongoDB connection string (Local or Atlas)
 
 ### 2. Environment Variables
-Copy `.env.example` to `.env` and configure your credentials:
+
+Copy .env.example to .env and configure your credentials:
+
+cp .env.example .env
 
 ### 3. Installation & Run
+
 # Install dependencies
+
 npm install
 
 # Run in development mode
+
 npm run dev
 
 ## 🔄 Auth Lifecycle Flow
 
 [ Register ] ──> Sends Verification Link ──> [ Verify Email ]
-                                                  │
+│
 [ Protected API ] <── Uses Access Token ─── [ Login ] ──> Sets HTTP-Only Refresh Cookie
-       │
-   (Expired)
-       │
-       └───> [ POST /auth/refresh ] ──> Issues New Access Token
+│
+(Expired)
+│
+└───> [ POST /auth/refresh ] ──> Issues New Access Token
 
 ---
 

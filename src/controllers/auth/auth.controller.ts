@@ -3,11 +3,14 @@ import { loginSchema, registerSchema } from "./auth.schema.js";
 import { userModel } from "../../models/user.model.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { sendRegisterEmail } from "../../services/email.service.js";
+import { sendRegisterEmail, sendResetPasswordEmail } from "../../services/email.service.js";
+import { getAccessToken, getRefreshToken } from "../../utils/auth.utils.js";
+import crypto from "node:crypto";
+import { getAppUrl } from "../../config/getAppUrl.js";
 
-const getAppUrl = () => {
-  return process.env.APP_URL || `http://localhost:${process.env.PORT}/api`;
-};
+//! Methods
+
+//! Controllers
 export const registerUser = async (req: Request, res: Response) => {
   try {
     const result = registerSchema.safeParse(req.body);
@@ -114,22 +117,14 @@ export const loginUser = async (req: Request, res: Response) => {
         message: "Email not verified!",
       });
     }
-    //* Access Token
-    const accessToken = jwt.sign(
-      { id: user._id, role: user.role, tokenVersion: user.tokenVersion },
-      process.env.JWT_ACCESS_SECRET!,
-      {
-        expiresIn: "30m",
-      },
-    );
-    //* Refresh Token
-    const refreshToken = jwt.sign(
-      { id: user._id, tokenVersion: user.tokenVersion },
-      process.env.JWT_REFRESH_SECRET!,
-      {
-        expiresIn: "7d",
-      },
-    );
+    //* Tokens
+
+    const accessToken = getAccessToken({
+      id: user._id,
+      role: user.role,
+      tokenVersion: user.tokenVersion,
+    });
+    const refreshToken = getRefreshToken({ id: user._id, tokenVersion: user.tokenVersion });
     //* Cookie
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
@@ -154,3 +149,115 @@ export const loginUser = async (req: Request, res: Response) => {
     });
   }
 };
+export const refreshToken = async (req: Request, res: Response) => {
+  try {
+    const token = req.cookies?.refreshToken as string | undefined;
+    if (!token) {
+      return res.status(401).json({
+        message: "Refresh Token missing",
+      });
+    }
+    const payload = jwt.verify(token, process.env.JWT_REFRESH_SECRET!) as jwt.JwtPayload;
+    if (!payload || !payload.id) {
+      return res.status(401).json({
+        message: "Invalid token payload",
+      });
+    }
+    const user = await userModel.findById(payload.id);
+    if (!user) {
+      return res.status(401).json({
+        message: "User not found",
+      });
+    }
+    if (user.tokenVersion !== payload.tokenVersion) {
+      return res.status(401).json({
+        message: "Refresh Token invalidated",
+      });
+    }
+
+    const newAccessToken = getAccessToken({
+      id: user._id,
+      role: user.role,
+      tokenVersion: user.tokenVersion,
+    });
+    const newRefreshToken = getRefreshToken({ id: user._id, tokenVersion: user.tokenVersion });
+
+    res.cookie("refreshToken", newRefreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+    return res.status(200).json({
+      message: "Token Refreshed",
+      accessToken: newAccessToken,
+      user: {
+        name: user.name,
+        email: user.email,
+        verified: user.isUserVerified,
+        twoFactorEnabled: user.twoFactorEnabled,
+      },
+    });
+  } catch (err) {
+    if (err instanceof jwt.JsonWebTokenError || err instanceof jwt.TokenExpiredError) {
+      return res.status(401).json({
+        message: "Invalid or expired refresh token",
+      });
+    }
+    console.log(err);
+    return res.status(500).json({
+      message: "Internal Server Error",
+    });
+  }
+};
+export const logOut = async (req: Request, res: Response) => {
+  try {
+    res.clearCookie("refreshToken", {
+      path: "/",
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+    });
+    return res.status(200).json({
+      message: "User Logged Out!",
+    });
+  } catch (err) {
+    console.log(err);
+    return res.status(500).json({
+      message: "Internal server Error",
+    });
+  }
+};
+export const forgotPassword = async (req: Request, res: Response) => {
+  const { email } = req.body as { email?: string };
+  if (!email) {
+    return res.status(400).json({
+      message: "Email is required!",
+    });
+  }
+  const normalizedEmail = email.toLowerCase().trim();
+  try {
+    const user = await userModel.findOne({ email: normalizedEmail });
+    if (!user) {
+      return res.status(200).json({
+        message: "If a user with this email exists, we'll send u an email",
+      });
+    }
+    const rawToken = crypto.randomBytes(32).toString("hex");
+    const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+    user.resetPasswordToken = tokenHash;
+    user.resetPasswordExpires = new Date(Date.now() + 15 * 60 * 1000);
+    await user.save();
+    const resetUrl = `${getAppUrl()}/auth/reset-password?token=${rawToken}`;
+    await sendResetPasswordEmail(user.email, resetUrl);
+    return res.status(200).json({
+      message: "If a user with this email exists, we'll send u an email",
+    });
+  } catch (err) {
+    console.log(err);
+    return res.status(500).json({
+      message: "Internal server Error",
+    });
+  }
+};
+

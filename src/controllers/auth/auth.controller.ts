@@ -260,4 +260,42 @@ export const forgotPassword = async (req: Request, res: Response) => {
     });
   }
 };
-
+export const resetPassword = async (req: Request, res: Response) => {
+  const { token, password } = req.body as { token?: string; password?: string };
+  if (!token) {
+    return res.status(400).json({
+      message: "Reset Token is missing!",
+    });
+  }
+  if (!password || password.length < 6) {
+    return res.status(400).json({
+      message: "Password must be minimum 6 character long!",
+    });
+  }
+  try {
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+    const user = await userModel.findOne({
+      resetPasswordToken: tokenHash,
+      resetPasswordExpires: { $gt: new Date() },
+    });
+    if (!user) {
+      return res.status(400).json({
+        message: "Invalid or expired token! Plz retry",
+      });
+    }
+    const newPassword = await bcrypt.hash(password, 10);
+    user.password = newPassword;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+    user.tokenVersion = user.tokenVersion + 1;
+    await user.save();
+    return res.status(200).json({
+      message: "Password Changed Successfully!",
+    });
+  } catch (err) {
+    console.log(err);
+    return res.status(500).json({
+      message: "Internal server Error",
+    });
+  }
+};

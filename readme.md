@@ -11,19 +11,21 @@
 - **Global Session Revocation:** Integrated `tokenVersion` check in Mongoose models to kill compromised user sessions instantly.
 - **Secure Email Verification:** Async verification pipeline powered by Nodemailer, Mailtrap, and signed verification tokens.
 - **Password Hashing:** Secure password storage using `bcryptjs` with optimized salt rounds.
+- **Google OAuth 2.0 Integration:** Full authorization code flow using `google-auth-library`. Features automatic user provisioning, automatic account verification, and secure dual-token payload generation.
 
 ---
 
 ## 🛠️ Tech Stack
 
-| Category                  | Technology                       |
-| :------------------------ | :------------------------------- |
-| **Runtime & Language**    | Node.js, TypeScript              |
-| **Framework**             | Express.js                       |
-| **Database & ODM**        | MongoDB, Mongoose                |
-| **Authentication**        | JSON Web Tokens (`jsonwebtoken`) |
-| **Validation & Security** | Zod, Bcrypt.js                   |
-| **Email Services**        | Nodemailer + Mailtrap (Testing)  |
+| Category                  | Technology                                                                 |
+| :------------------------ | :------------------------------------------------------------------------- |
+| **Runtime & Language**    | Node.js, TypeScript                                                        |
+| **Framework**             | Express.js                                                                 |
+| **Database & ODM**        | MongoDB, Mongoose                                                          |
+| **Authentication**        | JSON Web Tokens (`jsonwebtoken`)                                           |
+| **Validation & Security** | Zod, Bcrypt.js                                                             |
+| **Email Services**        | Nodemailer + Mailtrap (Testing)                                            |
+| **Authentication**        | JSON Web Tokens (`jsonwebtoken`), Google OAuth 2.0 (`google-auth-library`) |
 
 > **Note:** Mailtrap is currently used for local email testing and inbox simulation. It will be swapped for Resend in production.
 
@@ -56,13 +58,15 @@ npm run dev
 
 [ Register ] ──> Sends Verification Link ──> [ Verify Email ]
 │
-[ Protected API ] <── Uses Access Token ─── [ Login ] ──> Sets HTTP-Only Refresh Cookie
+▼
+[ Google OAuth Start ] ──> Redirects ──> [ OAuth Callback ] ──> Creates/Links User & Issues Tokens
+│
+▼
+[ Protected API ] <── Uses Access Token ──── [ Login ] ──> Sets HTTP-Only Refresh Cookie
 │
 (Expired)
 │
 └───> [ POST /auth/refresh ] ──> Issues New Access Token
-
----
 
 ## 🚧 What's Coming Next?
 
@@ -71,7 +75,7 @@ This repository is actively evolving into a fully featured enterprise auth bluep
 - [ ] Password Reset Pipeline (Forgot / Reset Password endpoints)
 - [ ] Rate Limiting (Protection against brute-force attacks)
 - [ ] Two-Factor Authentication (2FA) (TOTP-based authentication)
-- [ ] OAuth 2.0 Integration (Google / GitHub Social Logins)
+- [x] OAuth 2.0 Integration (Google Social Login implemented; GitHub coming next)
 
 ---
 

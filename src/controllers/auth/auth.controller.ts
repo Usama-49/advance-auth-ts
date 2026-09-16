@@ -4,13 +4,10 @@ import { userModel } from "../../models/user.model.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { sendRegisterEmail, sendResetPasswordEmail } from "../../services/email.service.js";
-import { getAccessToken, getRefreshToken } from "../../utils/auth.utils.js";
+import { getAccessToken, getGoogleClient, getRefreshToken } from "../../utils/auth.utils.js";
 import crypto from "node:crypto";
 import { getAppUrl } from "../../config/getAppUrl.js";
 
-//! Methods
-
-//! Controllers
 export const registerUser = async (req: Request, res: Response) => {
   try {
     const result = registerSchema.safeParse(req.body);
@@ -294,6 +291,103 @@ export const resetPassword = async (req: Request, res: Response) => {
     });
   } catch (err) {
     console.log(err);
+    return res.status(500).json({
+      message: "Internal server Error",
+    });
+  }
+};
+//! OAuth 2.0
+//* npm i google-auth-library
+export const googleAuthStart = async (req: Request, res: Response) => {
+  try {
+    const client = await getGoogleClient();
+    const url = client.generateAuthUrl({
+      access_type: "offline",
+      prompt: "consent",
+      scope: ["openid", "email", "profile"],
+    });
+    //* JSON for frontends
+    return res.redirect(url);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({
+      message: "Internal Server Error!",
+    });
+  }
+};
+export const googleAuthCallback = async (req: Request, res: Response) => {
+  const code = req.query.code as string | undefined;
+  if (!code) {
+    return res.status(400).json({ message: "Missing Code in CallBack" });
+  }
+  try {
+    const client = await getGoogleClient();
+    const { tokens } = await client.getToken(code);
+    if (!tokens.id_token) {
+      return res.status(400).json({
+        message: "No google id_token found!",
+      });
+    }
+    //* Verify Token and get user info
+    const ticket = await client.verifyIdToken({
+      idToken: tokens.id_token,
+      audience: process.env.GOOGLE_CLIENT_ID as string,
+      //^ Google signed this token, AND Google explicitly generated it for MY app (GOOGLE_CLIENT_ID), not someone else's app.
+    });
+    const payload = ticket.getPayload();
+    const email = payload?.email;
+    const emailVerified = payload?.email_verified;
+    if (!email || !emailVerified) {
+      return res.status(400).json({
+        message: "Email verification failed!",
+      });
+    }
+    const normalizedEmail = email.trim().toLocaleLowerCase();
+    let user = await userModel.findOne({ email: normalizedEmail });
+    if (!user) {
+      const randomPass = crypto.randomBytes(16).toString("hex");
+      const password = await bcrypt.hash(randomPass, 10);
+      user = await userModel.create({
+        email: normalizedEmail,
+        role: "user",
+        password,
+        isUserVerified: true,
+      });
+    } else {
+      if (!user.isUserVerified) {
+        user.isUserVerified = true;
+        await user.save();
+      }
+    }
+    //* Tokens
+    const refreshToken = getRefreshToken({
+      id: user._id,
+      role: user.role,
+      tokenVersion: user.tokenVersion,
+    });
+    const accessToken = getAccessToken({
+      id: user._id,
+      role: user.role,
+      tokenVersion: user.tokenVersion,
+    });
+    res.cookie("refreshToken", refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+    return res.status(200).json({
+      message: "Google Login Successful",
+      accessToken,
+      user: {
+        name: user.name,
+        email: user.email,
+        verified: user.isUserVerified,
+        twoFactorEnabled: user.twoFactorEnabled,
+      },
+    });
+  } catch (err) {
+    console.error(err);
     return res.status(500).json({
       message: "Internal server Error",
     });
